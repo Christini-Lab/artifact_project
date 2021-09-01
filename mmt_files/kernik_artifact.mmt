@@ -101,7 +101,7 @@ dot(Vclamp) = dVclampdt
 dVestdt = piecewise(
     cm_est < 1e-6, 0,
     rseries_est < 1e-6, 0,
-    (Vc - Vest) / ((1 - alpha) * cm_est * rseries_est/alpha)
+    (Vc - Vest) / ((1 - alpha) * cm_est * rseries_est)
 ) in [mV/ms]
 dot(Vest) = dVestdt
     in [mV]

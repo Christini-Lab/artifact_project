@@ -51,12 +51,13 @@ def perform_prestep(mod, step_length=30000):
     mod.set_state(sim.state())
 
 
-def prep_model_for_vc(mod):
+def prep_model_for_vc(mod, is_v_demoted=True):
     # Set up voltage-clamp simulation
     p = mod.get('engine.pace')
     p.set_binding(None)
 
     # Get membrane potential, demote to an ordinary variable
+    #if is_v_demoted:
     v = mod.get('membrane.V')
     v.demote()
     v.set_rhs(0)
@@ -120,7 +121,7 @@ def get_proto_response(mod, proto_location):
     t_max = proto.characteristic_time()
     sim = myokit.Simulation(mod, proto)
     
-    times = np.arange(0, t_max, 0.5)
+    times = np.arange(0, t_max, 0.1)
     dat = sim.run(t_max, log_times=times)
 
     return dat
@@ -159,15 +160,14 @@ def compare_artifact_model():
     fig, axs = plt.subplots(7, 1, sharex=True, figsize=(12, 8))
     axs[0].plot(dat['engine.time'], dat['membrane.V'])
     axs[1].plot(dat['engine.time'], dat['membrane.i_ion'])
-    #axs[2].plot(dat['engine.time'], dat['ina.i_Na'])
 
     mod = myokit.load_model('./mmt_files/kernik_artifact.mmt')
-    prep_model_for_vc(mod)
+    #prep_model_for_vc(mod, False)
     perform_prestep(mod, step_length=30000)
     dat = get_proto_response(mod, './mmt_files/sodium_proto.mmt') 
 
     axs[0].plot(dat['engine.time'], dat['membrane.V'])
-    axs[1].plot(dat['engine.time'], dat['membrane.i_ion'])
+    axs[1].plot(dat['engine.time'], dat['voltageclamp.Iout'])
     axs[2].plot(dat['engine.time'], dat['voltageclamp.Vclamp'])
     axs[3].plot(dat['engine.time'], dat['voltageclamp.Vp'])
     axs[4].plot(dat['engine.time'], dat['voltageclamp.Vest'])
