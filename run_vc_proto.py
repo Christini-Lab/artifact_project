@@ -121,7 +121,7 @@ def get_proto_response(mod, proto_location):
     t_max = proto.characteristic_time()
     sim = myokit.Simulation(mod, proto)
     
-    times = np.arange(0, t_max, 0.1)
+    times = np.arange(0, t_max, 0.05)
     dat = sim.run(t_max, log_times=times)
 
     return dat
@@ -157,22 +157,34 @@ def compare_artifact_model():
     perform_prestep(mod, step_length=30000)
     dat = get_proto_response(mod, './mmt_files/sodium_proto.mmt') 
 
-    fig, axs = plt.subplots(7, 1, sharex=True, figsize=(12, 8))
+    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(12, 8))
     axs[0].plot(dat['engine.time'], dat['membrane.V'])
-    axs[1].plot(dat['engine.time'], dat['membrane.i_ion'])
+    axs[1].plot(dat['engine.time'], dat['membrane.i_ion'], label='Ideal')
 
-    mod = myokit.load_model('./mmt_files/kernik_artifact.mmt')
-    #prep_model_for_vc(mod, False)
-    perform_prestep(mod, step_length=30000)
-    dat = get_proto_response(mod, './mmt_files/sodium_proto.mmt') 
+    for f in ['kernik_artifact.mmt', 'kernik_artifact2.mmt']:
+        mod = myokit.load_model(f'./mmt_files/{f}')
 
-    axs[0].plot(dat['engine.time'], dat['membrane.V'])
-    axs[1].plot(dat['engine.time'], dat['voltageclamp.Iout'])
-    axs[2].plot(dat['engine.time'], dat['voltageclamp.Vclamp'])
-    axs[3].plot(dat['engine.time'], dat['voltageclamp.Vp'])
-    axs[4].plot(dat['engine.time'], dat['voltageclamp.Vest'])
-    axs[5].plot(dat['engine.time'], dat['voltageclamp.Iout'])
-    axs[6].plot(dat['engine.time'], dat['voltageclamp.Iin'])
+
+        new_params = {'geom.Cm': 20,
+                      'voltageclamp.rseries': 0.012054223352242087,
+                      'voltageclamp.cprs': 4.188502860812823,
+                      'voltageclamp.voffset_eff': 2.9729555590147863,
+                      'voltageclamp.gLeak': 0.23719047586907285}
+
+        for k, v in new_params.items():
+            par_chil = k.split('.')
+            mod[k.split('.')[0]][k.split('.')[1]].set_rhs(v)
+
+        #prep_model_for_vc(mod, False)
+        perform_prestep(mod, step_length=30000)
+        dat = get_proto_response(mod, './mmt_files/sodium_proto.mmt') 
+
+        i_in = [v/new_params['geom.Cm'] for v in dat['voltageclamp.Iin']]
+        i_out = [v/new_params['geom.Cm'] for v in dat['voltageclamp.Iout']]
+
+        axs[0].plot(dat['engine.time'], dat['membrane.V'])
+        axs[1].plot(dat['engine.time'], i_out, label=f)
+        #axs[1].plot(dat['engine.time'], i_in)
 
     for ax in axs:
         ax.spines['right'].set_visible(False)
@@ -181,21 +193,211 @@ def compare_artifact_model():
     fs = 14
     axs[0].set_ylabel('Voltage', fontsize=fs)
     axs[1].set_ylabel('Current', fontsize=fs)
-    axs[2].set_ylabel('Vclamp', fontsize=fs)
-    axs[3].set_ylabel('Vp', fontsize=fs)
-    axs[4].set_ylabel('Vest', fontsize=fs)
-    axs[5].set_ylabel('Iout', fontsize=fs)
-    axs[6].set_ylabel('Iin', fontsize=fs)
-    axs[6].set_xlabel('Time (ms)', fontsize=fs)
+    axs[1].set_xlabel('Time (ms)', fontsize=fs)
+
+    axs[1].set_ylim(-200, 40)
+    axs[1].legend()
 
     plt.show()
+
+
+def adjust_compensation(is_exp_dat=True):
+    mod = myokit.load_model('./mmt_files/kernik_2019_mc.mmt')
+    prep_model_for_vc(mod)
+    perform_prestep(mod, step_length=30000)
+    dat = get_proto_response(mod, './mmt_files/sodium_proto.mmt') 
+
+    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(12, 8))
+    axs[0].plot(dat['engine.time'], dat['membrane.V'])
+    axs[1].plot(dat['engine.time'], dat['membrane.i_ion'], 'k--', label='Ideal')
+
+    new_params = {'geom.Cm': 28,
+                  'voltageclamp.rseries': 0.020,
+                  'voltageclamp.rseries_est': 0.019,
+                  'voltageclamp.cprs': 4.188502860812823,
+                  'voltageclamp.voffset_eff': 2.9729555590147863,
+                  'voltageclamp.gLeak': 0.23719047586907285}
+
+    for alpha_p in [0, .2, .4, .6, .8]:
+        mod = myokit.load_model(f'./mmt_files/kernik_artifact2.mmt')
+
+        new_params['voltageclamp.alpha_c'] = 0
+        new_params['voltageclamp.alpha_p'] = alpha_p
+
+        for k, v in new_params.items():
+            par_chil = k.split('.')
+            mod[k.split('.')[0]][k.split('.')[1]].set_rhs(v)
+
+        perform_prestep(mod, step_length=30000)
+        dat = get_proto_response(mod, './mmt_files/sodium_proto.mmt') 
+
+        i_out = [v/new_params['geom.Cm'] for v in dat['voltageclamp.Iout']]
+
+        num = alpha_p + .2
+        axs[1].plot(dat['engine.time'], i_out, label=f'pred={alpha_p}',
+                c=(alpha_p, 0, alpha_p))
+
+
+    for alpha_c in [0, .2, .4, .6, .8]:
+        mod = myokit.load_model(f'./mmt_files/kernik_artifact2.mmt')
+
+        new_params['voltageclamp.alpha_c'] = alpha_c 
+        new_params['voltageclamp.alpha_p'] = .7 
+
+        for k, v in new_params.items():
+            par_chil = k.split('.')
+            mod[k.split('.')[0]][k.split('.')[1]].set_rhs(v)
+
+        #prep_model_for_vc(mod, False)
+        perform_prestep(mod, step_length=30000)
+        dat = get_proto_response(mod, './mmt_files/sodium_proto.mmt') 
+
+        i_out = [v/new_params['geom.Cm'] for v in dat['voltageclamp.Iout']]
+
+        axs[1].plot(dat['engine.time'], i_out, label=f'comp={alpha_c}',
+                c=(0, alpha_c, 0))
+        #axs[1].plot(dat['engine.time'], i_in)
+
+    if is_exp_dat:
+        '4_021821_4_alex_control.xlsx'
+        #plot exp data
+
+    for ax in axs:
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+
+    fs = 14
+    axs[0].set_ylabel('Voltage', fontsize=fs)
+    axs[1].set_ylabel('Current', fontsize=fs)
+    axs[1].set_xlabel('Time (ms)', fontsize=fs)
+
+    axs[1].set_ylim(-200, 40)
+    axs[1].legend()
+
+    plt.show()
+
+
+def perf_vs_rupture():
+    mod = myokit.load_model('./mmt_files/kernik_2019_mc.mmt')
+    prep_model_for_vc(mod)
+    perform_prestep(mod, step_length=30000)
+    dat = get_proto_response(mod, './mmt_files/sodium_proto.mmt') 
+    iv_ideal = get_iv_dat(dat, is_artifact=False)
+
+    fig, axs = plt.subplots(3, 1, sharex=True, figsize=(12, 8))
+    axs[0].plot(dat['engine.time'], dat['membrane.V'])
+    axs[1].plot(dat['engine.time'], dat['membrane.i_ion'], 'k--', label='Ideal')
+    axs[2].plot(dat['engine.time'], dat['ina.i_Na'], 'k--', label='Ideal')
+
+    new_params = {'geom.Cm': 28,
+                  'voltageclamp.cprs': 4.188502860812823,
+                  'voltageclamp.voffset_eff': -2.8,
+                  'voltageclamp.gLeak': 1,
+                  'voltageclamp.alpha_c': 0,
+                  'voltageclamp.alpha_p': 0}
+
+    cols = ['b', 'g']
+    labs = ['Rupture', 'Perforated']
+    for i, r_series in enumerate([.003, .03]):
+        mod = myokit.load_model(f'./mmt_files/kernik_artifact2.mmt')
+
+        new_params['voltageclamp.rseries'] = r_series 
+        new_params['voltageclamp.rseries_est'] = r_series * .95
+
+        for k, v in new_params.items():
+            par_chil = k.split('.')
+            mod[k.split('.')[0]][k.split('.')[1]].set_rhs(v)
+
+        perform_prestep(mod, step_length=30000)
+        dat = get_proto_response(mod, './mmt_files/sodium_proto.mmt') 
+
+        i_out = [v/new_params['geom.Cm'] for v in dat['voltageclamp.Iout']]
+
+        axs[0].plot(dat['engine.time'], dat['membrane.V'], c=cols[i])
+        axs[1].plot(dat['engine.time'], i_out, c=cols[i],
+                label=f'Rseries={r_series*1000}M – {labs[i]}')
+        axs[2].plot(dat['engine.time'], dat['ina.i_Na'], c=cols[i])
+        if i == 0:
+            iv_rupt = get_iv_dat(dat, is_artifact=True)
+        else:
+            iv_perf = get_iv_dat(dat, is_artifact=True)
+
+    #if is_exp_dat:
+    #    '4_021821_4_alex_control.xlsx'
+    #    #plot exp data
+
+    for ax in axs:
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+
+    fs = 14
+    axs[0].set_ylabel('Voltage', fontsize=fs)
+    axs[1].set_ylabel('Current', fontsize=fs)
+    axs[2].set_ylabel('INa', fontsize=fs)
+    axs[2].set_xlabel('Time (ms)', fontsize=fs)
+
+    axs[1].set_ylim(-200, 40)
+    axs[1].legend()
+
+    plt.show()
+
+
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+
+    labs = ['Ideal', 'Rupture', 'Perforated']
+    cols = ['k', 'b', 'g']
+
+    for i, iv_dat in enumerate([iv_ideal, iv_rupt, iv_perf]):
+        ax.plot(iv_dat[0], iv_dat[1], '-o', c=cols[i], label=labs[i])
+
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+
+    fs = 14
+    ax.set_xlabel('Voltage', fontsize=fs)
+    ax.set_ylabel('Current', fontsize=fs)
+        
+    plt.legend()
+    plt.show()
+
+
+def get_iv_dat(dat, is_artifact):
+    cm = 28
+
+    times = dat['engine.time']
+
+    if is_artifact:
+        i_out = [v / cm for v in dat['voltageclamp.Iout']]
+        voltage = dat['voltageclamp.Vc']
+    else:
+        i_out = dat['membrane.i_ion']
+        voltage = dat['membrane.V']
+
+    freq = 1 / (times[1] - times[0])
+    voltages = []
+    peak_currents = []
+
+    for time in np.linspace(400, 5600, 14):
+        st_idx = freq * time
+        v = voltage[int(st_idx + 3)]
+        voltages.append(v)
+
+        if not is_artifact:
+            max_i = np.min(i_out[int(st_idx):int(st_idx+freq*5)])
+        else:
+            max_i = np.min(i_out[int(st_idx+.2*freq):int(st_idx+freq*5)])
+        peak_currents.append(max_i)
+
+    return [voltages, peak_currents] 
 
 
 def main():
     #assess_prestep()
     #run_opt_proto()
     #run_sodium_proto()
-    compare_artifact_model()
+    #compare_artifact_model()
+    adjust_compensation()
+    #perf_vs_rupture()
 
 
 if __name__ == '__main__':

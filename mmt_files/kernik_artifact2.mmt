@@ -42,6 +42,7 @@ voltageclamp.Vest = -80.0 [mV]
 voltageclamp.Iout = 0.0 [mV]
 
 
+
 [engine]
 time = 0 [ms]
     in [ms]
@@ -52,12 +53,6 @@ pace = 0
 
 [membrane]
 use voltageclamp.Vp, voltageclamp.rseries, voltageclamp.voffset_eff, geom.Cm
-Iion = i_ion * Cm + voltageclamp.ILeak
-    in [pA]
-dot(V) = (Vp - V + voffset_eff) / tau - Iion / Cm
-    tau = Cm * rseries in [ms]
-    desc: membrane potential
-    in [mV]
 i_ion = (
     + ik1.i_K1
     + ito.i_to
@@ -72,6 +67,12 @@ i_ion = (
     + ifunny.i_f
     + ibna.i_b_Na
     + ibca.i_b_Ca)
+i_ion_star = i_ion * Cm + voltageclamp.ILeak
+dot(V) = (Vp - V + voffset_eff) / tau - i_ion_star / Cm
+    tau = Cm * rseries in [ms]
+    desc: membane potential
+    in [mV]
+
 
 [voltageclamp]
 use membrane.V, geom.Cm
@@ -81,8 +82,9 @@ cprs = 4.0 [pF]  # Unknown value for 'parasitic' capacitance at electrode...
 cprs_est = 4.0 * 0.9 [pF]  # eff. parasitic capacitance at electrode; TODO: fit
 voffset_eff = 3 [mV]  # TODO: fit
 rseries_est = 0.95 * 10.0e-3 [GR]  # TODO: later this one use measured value
-cm_est = Cm * 0.9 [pF]  # TODO: similar to rseries_est, set value
-alpha = 0.8 [1]  # NOTE: percentage of compensation, this is included in rseries_est already
+cm_est = Cm * .9 [pF]  # TODO: similar to rseries_est, set value
+alpha_c = 0.8 [1]  # NOTE: percentage of compensation, this is included in rseries_est already
+alpha_p = 0.8 [1]  # NOTE: percentage of compensation, this is included in rseries_est already
 
 # Command voltage
 Vc = engine.pace
@@ -91,7 +93,7 @@ Vc = engine.pace
 
 # Rs compensation and summing delay
 tau_sum = 40e-3 in [ms]  # electronic delay term, ~ 5 - 70 microsecond
-Vc_prime = Vc + alpha * rseries_est * (Iout + cm_est * dVestdt)
+Vc_prime = (Vc + alpha_c*rseries_est*Iout + alpha_p*rseries_est*cm_est*dVestdt)
 dVclampdt = (Vc_prime - Vclamp) / tau_sum
     in [mV/ms]
 dot(Vclamp) = dVclampdt
@@ -102,7 +104,7 @@ dot(Vclamp) = dVclampdt
 dVestdt = piecewise(
     cm_est < 1e-6, 0,
     rseries_est < 1e-6, 0,
-    (Vc - Vest) / ((1 - alpha) * cm_est * rseries_est)
+    (Vc - Vest) / ((1 - alpha_p) * cm_est * rseries_est)
 ) in [mV/ms]
 dot(Vest) = dVestdt
     in [mV]
@@ -130,7 +132,7 @@ Iin = (
 
 ## assume linear leak residual
 gLeak = 1 [pA/mV]
-ELeak = 0 [mV]
+ELeak = -80 [mV]
 ILeak = gLeak * (V - ELeak) in [pA]
 
 
