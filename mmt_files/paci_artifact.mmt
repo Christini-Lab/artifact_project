@@ -1,0 +1,486 @@
+[[model]]
+author: Myokit CellML 1 API
+name: paci_hyttinen_aaltosetala_severi_ventricularVersion
+# Initial values
+Membrane.Vm            = -7.43340057623840950e-2
+i_Na_m_gate.m          =  1.02953468725003994e-1
+i_Na_h_gate.h          =  7.86926637881461000e-1
+i_Na_j_gate.j          =  2.53943221774722006e-1
+i_CaL_d_gate.d         =  8.96088425225181960e-5
+i_CaL_f1_gate.f1       =  9.70411811263976021e-1
+i_CaL_f2_gate.f2       =  9.99965815466749008e-1
+i_CaL_fCa_gate.fCa     =  9.98925296531803952e-1
+i_Kr_Xr1_gate.Xr1      =  7.78547011240132009e-3
+i_Kr_Xr2_gate.Xr2      =  4.32162576531616993e-1
+i_Ks_Xs_gate.Xs        =  3.22944866983665979e-2
+i_f_Xf_gate.Xf         =  1.00615100568753002e-1
+i_to_q_gate.q          =  8.39295925773218987e-1
+i_to_r_gate.r          =  5.73289893326379019e-3
+sodium_dynamics.Nai    =  1.09248496211573993e1
+calcium_dynamics.Cai   =  1.80773974140477016e-5
+calcium_dynamics.Ca_SR =  2.73423475193100007e-1
+calcium_dynamics.g     =  9.99999981028516949e-1
+voltageclamp.Vclamp = -.08 [V]
+voltageclamp.Vp = -.08 [V]
+voltageclamp.Vest = -.08 [V]
+voltageclamp.Iout = 0.0
+
+
+[Membrane]
+use voltageclamp.Vp, voltageclamp.rseries, voltageclamp.voffset_eff
+Cm = model_parameters.Cm
+dot(Vm) = (Vp - Vm + voffset_eff) / tau - i_ion_star / Cm
+    tau = Cm * rseries in [s]
+    desc: membane potential
+    in [mV]
+
+i_ion_star = i_ion * Cm + voltageclamp.ILeak
+
+i_ion = (i_K1.i_K1 + i_to.i_to + i_Kr.i_Kr + i_Ks.i_Ks + i_CaL.i_CaL + i_NaK.i_NaK + i_Na.i_Na + i_NaCa.i_NaCa + i_PCa.i_PCa + i_f.i_f + i_b_Na.i_b_Na + i_b_Ca.i_b_Ca)
+    in [V]
+
+[voltageclamp]
+use Membrane.Vm, model_parameters.Cm
+# Parameters
+rseries = 20.0 * 1E6 # in order of Ohms; TODO: fit
+cprs = 4.0 * 1E-12 [F]  # Unknown value for 'parasitic' capacitance at electrode...
+cprs_est = cprs * 0.9 [F]  # eff. parasitic capacitance at electrode; TODO: fit
+voffset_eff = -.003 [V]  # TODO: fit
+rseries_est = rseries * .9  # TODO: later this one use measured value
+cm_est = Cm * .9 [F]  # TODO: similar to rseries_est, set value
+alpha_c = 0.8 [1]  # NOTE: percentage of compensation, this is included in rseries_est already
+alpha_p = 0.8 [1]  # NOTE: percentage of compensation, this is included in rseries_est already
+
+# Command voltage
+Vc = engine.pace
+    desc: command voltage
+    in [mV]
+
+# Rs compensation and summing delay
+tau_sum = 40e-6 in [s]  # electronic delay term, ~ 5 - 70 microsecond
+Vc_prime = (Vc + alpha_c*rseries_est*Iout + alpha_p*rseries_est*cm_est*dVestdt)
+dVclampdt = (Vc_prime - Vclamp) / tau_sum
+    in [mV/ms]
+dot(Vclamp) = dVclampdt
+    desc: clamp voltage
+    in [mV]
+
+# Supercharging
+dVestdt = piecewise(
+    cm_est < 1E-12, 0,
+    rseries_est < 1E6, 0,
+    (Vc - Vest) / ((1 - alpha_p) * cm_est * rseries_est)
+) in [mV/ms]
+dot(Vest) = dVestdt
+    in [V]
+
+# Amplifier delay
+tau_clamp = 0.8 * 1e-6 in [s]
+dVpdt = (Vclamp - Vp) / tau_clamp in [mV/ms]
+dot(Vp) = dVpdt
+    desc: pipette voltage
+    in [mV]
+
+# Feedback delay
+dot(Iout) = (Iin - Iout) / tau
+    tau = 7.5 * 1e-6 in [s]
+    desc: measured current
+    in [pA]
+
+Iin = (
+        (Vp - Vm + voffset_eff) / rseries
+        + cprs * dVpdt
+        - cprs_est * dVclampdt
+        - cm_est * if(rseries_est < 1E6, dVclampdt, dVestdt)
+    )
+    in [A]
+
+## assume linear leak residual
+gLeak = .23E-9 [A/V]
+ELeak = -.080 [V]
+ILeak = gLeak * (Vm - ELeak) in [pA]
+
+
+[engine]
+time = 0 [s]
+    in [s]
+    bind time
+pace = 0
+    bind pace
+
+[stimulus]
+i_stim = engine.pace * amplitude
+    in [A/F]
+amplitude = -10 [A/F]
+    in [A/F]
+
+
+[calcium_dynamics]
+Buf_C = 0.25 [mM]
+    in [mM]
+Buf_SR = 10 [mM]
+    in [mM]
+dot(Ca_SR) = Ca_SR_bufSR * model_parameters.Vc / model_parameters.V_SR * (i_up - (i_rel + i_leak))
+    in [mM]
+Ca_SR_bufSR = 1 / (1 + Buf_SR * Kbuf_SR / (Ca_SR + Kbuf_SR) ^ 2)
+    in [1]
+dot(Cai) = Cai_bufc * (i_leak - i_up + i_rel - (i_CaL.i_CaL + (i_b_Ca.i_b_Ca + i_PCa.i_PCa) - 2 * i_NaCa.i_NaCa) * model_parameters.Cm / (2 * (model_parameters.Vc * (model_parameters.F * 1e-18 [1 (1e+18)]))))
+    in [mM]
+Cai_bufc = 1 / (1 + Buf_C * Kbuf_C / (Cai + Kbuf_C) ^ 2)
+    in [1]
+Kbuf_C = 0.001 [mM]
+    in [mM]
+Kbuf_SR = 0.3 [mM]
+    in [mM]
+Kup = 0.00025 [mM]
+    in [mM]
+V_leak =  4.44439999999999993e-4 [S/F]
+    in [S/F]
+VmaxUp = 0.56064 [mol/m^3/s]
+    in [mol/m^3/s]
+a_rel = 16.464 [mol/m^3/s]
+    in [mol/m^3/s]
+b_rel = 0.25 [mM]
+    in [mM]
+c_rel = 8.232 [mol/m^3/s]
+    in [mol/m^3/s]
+const2 = piecewise(g_inf > g and Membrane.Vm > -0.06 [V], 0, 1)
+    in [1]
+dot(g) = const2 * (g_inf - g) / tau_g
+    in [1]
+g_inf = piecewise(Cai <= 0.00035 [mM], 1 / (1 + (Cai / 0.00035 [mM]) ^ 6), 1 / (1 + (Cai / 0.00035 [mM]) ^ 16))
+    in [1]
+i_leak = (Ca_SR - Cai) * V_leak
+    in [mol/m^3/s]
+i_rel = (c_rel + a_rel * Ca_SR ^ 2 / (b_rel ^ 2 + Ca_SR ^ 2)) * (i_CaL_d_gate.d * (g * 0.0411))
+    in [mol/m^3/s]
+i_up = VmaxUp / (1 + Kup ^ 2 / Cai ^ 2)
+    in [mol/m^3/s]
+tau_g = 0.002 [s]
+    in [s]
+
+[current_blockers]
+Chromanol_iKs30 = 0
+    in [1]
+Chromanol_iKs50 = 0
+    in [1]
+Chromanol_iKs70 = 0
+    in [1]
+Chromanol_iKs90 = 0
+    in [1]
+E4031_100nM = 0
+    in [1]
+E4031_30nM = 0
+    in [1]
+TTX_10uM = 0
+    in [1]
+TTX_30uM = 0
+    in [1]
+TTX_3uM = 0
+    in [1]
+nifed_100nM = 0
+    in [1]
+nifed_10nM = 0
+    in [1]
+nifed_30nM = 0
+    in [1]
+nifed_3nM = 0
+    in [1]
+
+[electric_potentials]
+E_Ca = 0.5 * (model_parameters.R * model_parameters.T) / model_parameters.F * log(model_parameters.Cao / calcium_dynamics.Cai)
+    in [V]
+E_K = model_parameters.R * model_parameters.T / model_parameters.F * log(model_parameters.Ko / model_parameters.Ki)
+    in [V]
+E_Ks = model_parameters.R * model_parameters.T / model_parameters.F * log((model_parameters.Ko + PkNa * model_parameters.Nao) / (model_parameters.Ki + PkNa * sodium_dynamics.Nai))
+    in [V]
+E_Na = model_parameters.R * model_parameters.T / model_parameters.F * log(model_parameters.Nao / sodium_dynamics.Nai)
+    in [V]
+PkNa = 0.03
+    in [1]
+
+[i_CaL]
+g_CaL =  8.63570200000000015e-5 [L/F/ms]
+    in [L/F/ms]
+i_CaL = g_CaL * (4 * (Membrane.Vm * model_parameters.F ^ 2)) / (model_parameters.R * model_parameters.T) * (calcium_dynamics.Cai * exp(2 * (Membrane.Vm * model_parameters.F) / (model_parameters.R * model_parameters.T)) - 0.341 * model_parameters.Cao) / (exp(2 * (Membrane.Vm * model_parameters.F) / (model_parameters.R * model_parameters.T)) - 1) * (i_CaL_d_gate.d * (i_CaL_f1_gate.f1 * (i_CaL_f2_gate.f2 * i_CaL_fCa_gate.fCa)))
+    in [A/F]
+nifed_coeff = piecewise(current_blockers.nifed_3nM == 1, 0.93, current_blockers.nifed_10nM == 1, 0.79, current_blockers.nifed_30nM == 1, 0.56, current_blockers.nifed_100nM == 1, 0.28, 1)
+    in [1]
+
+[i_CaL_d_gate]
+alpha_d = 0.25 + 1.4 / (1 + exp((-Membrane.Vm * 1000 [1 (0.001)] - 35 [mV]) / 13 [mV]))
+    in [1]
+beta_d = 1.4 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 5 [mV]) / 5 [mV]))
+    in [1]
+dot(d) = (d_infinity - d) / tau_d
+    in [1]
+d_infinity = 1 / (1 + exp(-(Membrane.Vm * 1000 [1 (0.001)] + 9.1 [mV]) / 7 [mV]))
+    in [1]
+gamma_d = 1 / (1 + exp((-Membrane.Vm * 1000 [1 (0.001)] + 50 [mV]) / 20 [mV]))
+    in [1]
+tau_d = (alpha_d * beta_d + gamma_d) * 1 [s] / 1000
+    in [s]
+
+[i_CaL_f1_gate]
+constf1 = piecewise(f1_inf - f1 > 0, 1 + 1433 [m^3/mol] * (calcium_dynamics.Cai - 50 [mM] * 1e-6), 1)
+    in [1]
+dot(f1) = (f1_inf - f1) / tau_f1
+    in [1]
+f1_inf = 1 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 26 [mV]) / 3 [mV]))
+    in [1]
+tau_f1 = (20 [s] + (1102.5 [s] * exp(-((Membrane.Vm * 1000 [1 (0.001)] + 27 [mV]) ^ 2 / 15 [mV^2]) ^ 2) + (200 [s] / (1 + exp((13 [mV] - Membrane.Vm * 1000 [1 (0.001)]) / 10 [mV])) + 180 [s] / (1 + exp((30 [mV] + Membrane.Vm * 1000 [1 (0.001)]) / 10 [mV]))))) * constf1 / 1000
+    in [s]
+
+[i_CaL_f2_gate]
+constf2 = 1
+    in [1]
+dot(f2) = (f2_inf - f2) / tau_f2
+    in [1]
+f2_inf = 0.33 + 0.67 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 35 [mV]) / 4 [mV]))
+    in [1]
+tau_f2 = (600 [s] * exp(-(Membrane.Vm * 1000 [1 (0.001)] + 25 [mV]) ^ 2 / 170 [mV^2]) + (31 [s] / (1 + exp((25 [mV] - Membrane.Vm * 1000 [1 (0.001)]) / 10 [mV])) + 16 [s] / (1 + exp((30 [mV] + Membrane.Vm * 1000 [1 (0.001)]) / 10 [mV])))) * constf2 / 1000
+    in [s]
+
+[i_CaL_fCa_gate]
+alpha_fCa = 1 / (1 + (calcium_dynamics.Cai / 0.0006 [mM]) ^ 8)
+    in [1]
+beta_fCa = 0.1 / (1 + exp((calcium_dynamics.Cai - 0.0009 [mM]) / 0.0001 [mM]))
+    in [1]
+constfCa = piecewise(Membrane.Vm > -0.06 [V] and fCa_inf > fCa, 0, 1)
+    in [1]
+dot(fCa) = constfCa * (fCa_inf - fCa) / tau_fCa
+    in [1]
+fCa_inf = (alpha_fCa + (beta_fCa + gamma_fCa)) / 1.3156
+    in [1]
+gamma_fCa = 0.3 / (1 + exp((calcium_dynamics.Cai - 0.00075 [mM]) / 0.0008 [mM]))
+    in [1]
+tau_fCa = 0.002 [s]
+    in [s]
+
+[i_K1]
+XK1_inf = alpha_K1 / (alpha_K1 + beta_K1)
+    in [1]
+alpha_K1 = 3.91 / (1 + exp(0.5942 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] - electric_potentials.E_K * 1000 [1 (0.001)] - 200 [mV])))
+    in [1]
+beta_K1 = (-1.509 * exp(0.0002 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] - electric_potentials.E_K * 1000 [1 (0.001)] + 100 [mV])) + exp(0.5886 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] - electric_potentials.E_K * 1000 [1 (0.001)] - 10 [mV]))) / (1 + exp(0.4547 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] - electric_potentials.E_K * 1000 [1 (0.001)])))
+    in [1]
+g_K1 = 28.1492 [S/F]
+    in [S/F]
+i_K1 = g_K1 * (XK1_inf * ((Membrane.Vm - electric_potentials.E_K) * sqrt(model_parameters.Ko / 5.4 [mM])))
+    in [A/F]
+
+[i_Kr]
+E4031_coeff = piecewise(current_blockers.E4031_30nM == 1, 0.77, current_blockers.E4031_100nM == 1, 0.5, 1)
+    in [1]
+g_Kr = 29.8667 [S/F]
+    in [S/F]
+i_Kr = E4031_coeff * (g_Kr * ((Membrane.Vm - electric_potentials.E_K) * (i_Kr_Xr1_gate.Xr1 * (i_Kr_Xr2_gate.Xr2 * sqrt(model_parameters.Ko / 5.4 [mM])))))
+    in [A/F]
+
+[i_Kr_Xr1_gate]
+L0 = 0.025
+    in [1]
+Q = 2.3
+    in [1]
+V_half = 1000 [1 (0.001)] * (-model_parameters.R * model_parameters.T / (model_parameters.F * Q) * log((1 + model_parameters.Cao / 2.6 [mM]) ^ 4 / (L0 * (1 + model_parameters.Cao / 0.58 [mM]) ^ 4)) - 0.019 [V])
+    in [mV]
+dot(Xr1) = (Xr1_inf - Xr1) / tau_Xr1
+    in [1]
+Xr1_inf = 1 / (1 + exp((V_half - Membrane.Vm * 1000 [1 (0.001)]) / 4.9 [mV]))
+    in [1]
+alpha_Xr1 = 450 / (1 + exp((-45 [mV] - Membrane.Vm * 1000 [1 (0.001)]) / 10 [mV]))
+    in [1]
+beta_Xr1 = 6 / (1 + exp((30 [mV] + Membrane.Vm * 1000 [1 (0.001)]) / 11.5 [mV]))
+    in [1]
+tau_Xr1 = 1 [s] * (alpha_Xr1 * beta_Xr1) / 1000
+    in [s]
+
+[i_Kr_Xr2_gate]
+dot(Xr2) = (Xr2_infinity - Xr2) / tau_Xr2
+    in [1]
+Xr2_infinity = 1 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 88 [mV]) / 50 [mV]))
+    in [1]
+alpha_Xr2 = 3 / (1 + exp((-60 [mV] - Membrane.Vm * 1000 [1 (0.001)]) / 20 [mV]))
+    in [1]
+beta_Xr2 = 1.12 / (1 + exp((-60 [mV] + Membrane.Vm * 1000 [1 (0.001)]) / 20 [mV]))
+    in [1]
+tau_Xr2 = 1 [s] * (alpha_Xr2 * beta_Xr2) / 1000
+    in [s]
+
+[i_Ks]
+Chromanol_coeff = piecewise(current_blockers.Chromanol_iKs30 == 1, 0.7, current_blockers.Chromanol_iKs50 == 1, 0.5, current_blockers.Chromanol_iKs70 == 1, 0.3, current_blockers.Chromanol_iKs90 == 1, 0.1, 1)
+    in [1]
+g_Ks = 2.041 [S/F]
+    in [S/F]
+i_Ks = Chromanol_coeff * (g_Ks * ((Membrane.Vm - electric_potentials.E_Ks) * (i_Ks_Xs_gate.Xs ^ 2 * (1 + 0.6 / (1 + (3.8 [mM] * 1e-5 / calcium_dynamics.Cai) ^ 1.4)))))
+    in [A/F]
+
+[i_Ks_Xs_gate]
+dot(Xs) = (Xs_infinity - Xs) / tau_Xs
+    in [1]
+Xs_infinity = 1 / (1 + exp((-Membrane.Vm * 1000 [1 (0.001)] - 20 [mV]) / 16 [mV]))
+    in [1]
+alpha_Xs = 1100 / sqrt(1 + exp((-10 [mV] - Membrane.Vm * 1000 [1 (0.001)]) / 6 [mV]))
+    in [1]
+beta_Xs = 1 / (1 + exp((-60 [mV] + Membrane.Vm * 1000 [1 (0.001)]) / 20 [mV]))
+    in [1]
+tau_Xs = 1 [s] * (alpha_Xs * beta_Xs) / 1000
+    in [s]
+
+[i_Na]
+TTX_coeff = piecewise(current_blockers.TTX_3uM == 1, 0.18, current_blockers.TTX_10uM == 1, 0.06, current_blockers.TTX_30uM == 1, 0.02, 1)
+    in [1]
+g_Na = 3671.2302 [S/F]
+    in [S/F]
+i_Na = TTX_coeff * (g_Na * (i_Na_m_gate.m ^ 3 * (i_Na_h_gate.h * (i_Na_j_gate.j * (Membrane.Vm - electric_potentials.E_Na)))))
+    in [A/F]
+
+[i_NaCa]
+KmCa = 1.38 [mM]
+    in [mM]
+KmNai = 87.5 [mM]
+    in [mM]
+Ksat = 0.1
+    in [1]
+alpha = 2.8571432
+    in [1]
+gamma = 0.35
+    in [1]
+i_NaCa = kNaCa * (exp(gamma * (Membrane.Vm * model_parameters.F) / (model_parameters.R * model_parameters.T)) * (sodium_dynamics.Nai ^ 3 * model_parameters.Cao) - exp((gamma - 1) * (Membrane.Vm * model_parameters.F) / (model_parameters.R * model_parameters.T)) * (model_parameters.Nao ^ 3 * (calcium_dynamics.Cai * alpha))) / ((KmNai ^ 3 + model_parameters.Nao ^ 3) * ((KmCa + model_parameters.Cao) * (1 + Ksat * exp((gamma - 1) * (Membrane.Vm * model_parameters.F) / (model_parameters.R * model_parameters.T)))))
+    in [A/F]
+kNaCa = 4900 [A/F]
+    in [A/F]
+
+[i_NaK]
+Km_K = 1 [mM]
+    in [mM]
+Km_Na = 40 [mM]
+    in [mM]
+PNaK = 1.841424 [A/F]
+    in [A/F]
+i_NaK = PNaK * model_parameters.Ko / (model_parameters.Ko + Km_K) * sodium_dynamics.Nai / (sodium_dynamics.Nai + Km_Na) / (1 + (0.1245 * exp(-0.1 * (Membrane.Vm * model_parameters.F) / (model_parameters.R * model_parameters.T)) + 0.0353 * exp(-Membrane.Vm * model_parameters.F / (model_parameters.R * model_parameters.T))))
+    in [A/F]
+
+[i_Na_h_gate]
+alpha_h = piecewise(Membrane.Vm < -0.04 [V], 0.057 * exp(-(Membrane.Vm * 1000 [1 (0.001)] + 80 [mV]) / 6.8 [mV]), 0)
+    in [1]
+beta_h = piecewise(Membrane.Vm < -0.04 [V], 2.7 * exp(0.079 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])) + 3.1 * (10 ^ 5 * exp(0.3485 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)]))), 0.77 / (0.13 * (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 10.66 [mV]) / -11.1 [mV]))))
+    in [1]
+dot(h) = (h_inf - h) / tau_h
+    in [1]
+h_inf = 1 / sqrt(1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 72.1 [mV]) / 5.7 [mV]))
+    in [1]
+tau_h = piecewise(Membrane.Vm < -0.04 [V], 1.5 [s] / ((alpha_h + beta_h) * 1000), 2.542 [s] / 1000)
+    in [s]
+
+[i_Na_j_gate]
+alpha_j = piecewise(Membrane.Vm < -0.04 [V], (-25428 [1/mV] * exp(0.2444 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])) - 6.948 [1/mV] * (10 ^ (-6) * exp(-0.04391 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])))) * (Membrane.Vm * 1000 [1 (0.001)] + 37.78 [mV]) / (1 + exp(0.311 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 79.23 [mV]))), 0)
+    in [1]
+beta_j = piecewise(Membrane.Vm < -0.04 [V], 0.02424 * exp(-0.01052 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])) / (1 + exp(-0.1378 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 40.14 [mV]))), 0.6 * exp(0.057 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])) / (1 + exp(-0.1 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 32 [mV]))))
+    in [1]
+dot(j) = (j_inf - j) / tau_j
+    in [1]
+j_inf = 1 / sqrt(1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 72.1 [mV]) / 5.7 [mV]))
+    in [1]
+tau_j = 7 [s] / ((alpha_j + beta_j) * 1000)
+    in [s]
+
+[i_Na_m_gate]
+alpha_m = 1 / (1 + exp((-Membrane.Vm * 1000 [1 (0.001)] - 60 [mV]) / 5 [mV]))
+    in [1]
+beta_m = 0.1 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 35 [mV]) / 5 [mV])) + 0.1 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] - 50 [mV]) / 200 [mV]))
+    in [1]
+dot(m) = (m_inf - m) / tau_m
+    in [1]
+m_inf = 1 / (1 + exp((-Membrane.Vm * 1000 [1 (0.001)] - 34.1 [mV]) / 5.9 [mV])) ^ (1 / 3)
+    in [1]
+tau_m = 1 [s] * (alpha_m * beta_m) / 1000
+    in [s]
+
+[i_PCa]
+KPCa = 0.0005 [mM]
+    in [mM]
+g_PCa = 0.4125 [A/F]
+    in [A/F]
+i_PCa = g_PCa * calcium_dynamics.Cai / (calcium_dynamics.Cai + KPCa)
+    in [A/F]
+
+[i_b_Ca]
+g_b_Ca = 0.69264 [S/F]
+    in [S/F]
+i_b_Ca = g_b_Ca * (Membrane.Vm - electric_potentials.E_Ca)
+    in [A/F]
+
+[i_b_Na]
+g_b_Na = 0.9 [S/F]
+    in [S/F]
+i_b_Na = g_b_Na * (Membrane.Vm - electric_potentials.E_Na)
+    in [A/F]
+
+[i_f]
+E_f = -0.017 [V]
+    in [V]
+g_f = 30.10312 [S/F]
+    in [S/F]
+i_f = g_f * (i_f_Xf_gate.Xf * (Membrane.Vm - E_f))
+    in [A/F]
+
+[i_f_Xf_gate]
+dot(Xf) = (Xf_infinity - Xf) / tau_Xf
+    in [1]
+Xf_infinity = 1 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 77.85 [mV]) / 5 [mV]))
+    in [1]
+tau_Xf = 1900 [s] / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 15 [mV]) / 10 [mV])) / 1000
+    in [s]
+
+[i_to]
+g_to = 29.9038 [S/F]
+    in [S/F]
+i_to = g_to * ((Membrane.Vm - electric_potentials.E_K) * (i_to_q_gate.q * i_to_r_gate.r))
+    in [A/F]
+
+[i_to_q_gate]
+dot(q) = (q_inf - q) / tau_q
+    in [1]
+q_inf = 1 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 53 [mV]) / 13 [mV]))
+    in [1]
+tau_q = (6.06 [s] + 39.102 [s] / (0.57 * exp(-0.08 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 44 [mV])) + 0.065 * exp(0.1 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 45.93 [mV])))) / 1000
+    in [s]
+
+[i_to_r_gate]
+dot(r) = (r_inf - r) / tau_r
+    in [1]
+r_inf = 1 / (1 + exp(-(Membrane.Vm * 1000 [1 (0.001)] - 22.3 [mV]) / 18.75 [mV]))
+    in [1]
+tau_r = (2.75352 [s] + 14.40516 [s] / (1.037 * exp(0.09 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 30.61 [mV])) + 0.369 * exp(-0.12 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 23.84 [mV])))) / 1000
+    in [s]
+
+[model_parameters]
+Cao = 1.8 [mM]
+    in [mM]
+Cm =  2.87109000000000034e-11 [F]
+    in [F]
+F =  9.64853414999999950e4 [C/mol]
+    in [C/mol]
+Ki = 150 [mM]
+    in [mM]
+Ko = 5.4 [mM]
+    in [mM]
+Nao = 151 [mM]
+    in [mM]
+R = 8.314472 [J/mol/K]
+    in [J/mol/K]
+T = 310 [K]
+    in [K]
+V_SR = 583.73 [um^3]
+    in [um^3]
+Vc = 8800 [um^3]
+    in [um^3]
+
+[sodium_dynamics]
+dot(Nai) = -model_parameters.Cm * (i_Na.i_Na + (i_b_Na.i_b_Na + (3 * i_NaK.i_NaK + 3 * i_NaCa.i_NaCa))) / (model_parameters.F * (model_parameters.Vc * 1e-18 [1 (1e+18)]))
+    in [mM]
+
+[[protocol]]
+#Level  Start    Length   Period   Multiplier
+4.0      .010       1        1         0

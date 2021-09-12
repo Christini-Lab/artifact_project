@@ -41,8 +41,6 @@ voltageclamp.Vp = -80.0 [mV]
 voltageclamp.Vest = -80.0 [mV]
 voltageclamp.Iout = 0.0 [mV]
 
-
-
 [engine]
 time = 0 [ms]
     in [ms]
@@ -77,10 +75,10 @@ dot(V) = (Vp - V + voffset_eff) / tau - i_ion_star / Cm
 [voltageclamp]
 use membrane.V, geom.Cm
 # Parameters
-rseries = 10.0 * 1e-3 [GR]  # in order of MegaOhms; TODO: fit
+rseries = 20.0 * 1e-3 [GR]  # in order of MegaOhms; TODO: fit
 cprs = 4.0 [pF]  # Unknown value for 'parasitic' capacitance at electrode...
 cprs_est = 4.0 * 0.9 [pF]  # eff. parasitic capacitance at electrode; TODO: fit
-voffset_eff = 3 [mV]  # TODO: fit
+voffset_eff = -3 [mV]  # TODO: fit
 rseries_est = 0.95 * 10.0e-3 [GR]  # TODO: later this one use measured value
 cm_est = Cm * .9 [pF]  # TODO: similar to rseries_est, set value
 alpha_c = 0.8 [1]  # NOTE: percentage of compensation, this is included in rseries_est already
@@ -131,7 +129,7 @@ Iin = (
     in [pA]
 
 ## assume linear leak residual
-gLeak = 1 [pA/mV]
+gLeak = .23 [pA/mV]
 ELeak = -80 [mV]
 ILeak = gLeak * (V - ELeak) in [pA]
 
@@ -827,7 +825,7 @@ dot(Ki) = -geom.Cm / (phys.F * geom.Vc) * (
 # Cell geometry
 #
 [geom]
-Cm = 60 [pF]
+Cm = 28 [pF]
     in [pF]
 V_tot = 3960 [um^3]
     in [um^3]

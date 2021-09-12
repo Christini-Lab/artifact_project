@@ -211,7 +211,7 @@ def adjust_compensation(is_exp_dat=True):
     axs[0].plot(dat['engine.time'], dat['membrane.V'])
     axs[1].plot(dat['engine.time'], dat['membrane.i_ion'], 'k--', label='Ideal')
 
-    new_params = {'geom.Cm': 28,
+    new_params = {'geom.Cm': 60,
                   'voltageclamp.rseries': 0.020,
                   'voltageclamp.rseries_est': 0.019,
                   'voltageclamp.cprs': 4.188502860812823,
@@ -219,7 +219,7 @@ def adjust_compensation(is_exp_dat=True):
                   'voltageclamp.gLeak': 0.23719047586907285}
 
     for alpha_p in [0, .2, .4, .6, .8]:
-        mod = myokit.load_model(f'./mmt_files/kernik_artifact2.mmt')
+        mod = myokit.load_model(f'./mmt_files/kernik_artifact.mmt')
 
         new_params['voltageclamp.alpha_c'] = 0
         new_params['voltageclamp.alpha_p'] = alpha_p
@@ -239,7 +239,7 @@ def adjust_compensation(is_exp_dat=True):
 
 
     for alpha_c in [0, .2, .4, .6, .8]:
-        mod = myokit.load_model(f'./mmt_files/kernik_artifact2.mmt')
+        mod = myokit.load_model(f'./mmt_files/kernik_artifact.mmt')
 
         new_params['voltageclamp.alpha_c'] = alpha_c 
         new_params['voltageclamp.alpha_p'] = .7 
@@ -391,13 +391,126 @@ def get_iv_dat(dat, is_artifact):
     return [voltages, peak_currents] 
 
 
+def compare_paci_kernik():
+    fig, axs = plt.subplots(3, 1, sharex=True, figsize=(12, 8))
+
+    mod = myokit.load_model('./mmt_files/kernik_2019_mc.mmt')
+    proto = myokit.load_protocol('./mmt_files/sodium_proto.mmt')
+
+    vm_names = ['membrane.V', 'Membrane.Vm']
+    t_step = [.05, .0001]
+    i_ion_name = ['membrane.i_ion', 'Membrane.i_ion']
+
+    for i, mod_proto in enumerate([['kernik_2019_mc.mmt', 'sodium_proto.mmt'],
+                                    ['paci.mmt', 'sodium_proto_s.mmt']]):
+        mod = myokit.load_model(f'./mmt_files/{mod_proto[0]}')
+        proto = myokit.load_protocol(f'./mmt_files/{mod_proto[1]}')
+
+        p = mod.get('engine.pace')
+        p.set_binding(None)
+
+        # Get membrane potential, demote to an ordinary variable
+        #if is_v_demoted:
+        v = mod.get(vm_names[i])
+        v.demote()
+        v.set_rhs(0)
+        v.set_binding('pace') # Bind to the pacing mechanism
+
+        sim = myokit.Simulation(mod, proto)
+        t_max = proto.characteristic_time()
+        times = np.arange(0, t_max, t_step[i])
+
+        dat = sim.run(t_max, log_times=times)
+
+        if i > 0:
+            times = times * 1000
+        axs[1+i].plot(times,
+                dat[i_ion_name[i]], 'k--', label='Ideal')
+
+    v = [v*1000 for v in dat['Membrane.Vm']]
+    axs[0].plot(times, v)
+
+    for alpha_p in [0, .2, .4, .6, .8]:
+        for i, mod_proto in enumerate([['kernik_artifact.mmt', 'sodium_proto.mmt'],
+                            ['paci_artifact.mmt', 'sodium_proto_s.mmt']]):
+            mod = myokit.load_model(f'./mmt_files/{mod_proto[0]}')
+            proto = myokit.load_protocol(f'./mmt_files/{mod_proto[1]}')
+
+            mod['voltageclamp']['alpha_p'].set_rhs(alpha_p)
+            mod['voltageclamp']['alpha_c'].set_rhs(0)
+
+            sim = myokit.Simulation(mod, proto)
+            t_max = proto.characteristic_time()
+            times = np.arange(0, t_max, t_step[i])
+
+            dat = sim.run(t_max, log_times=times)
+
+            if i > 0:
+                times = times * 1000
+                cm = 2.8E-11
+                i_out = [i_out/cm for i_out in dat['voltageclamp.Iout']]
+            else:
+                cm = 28
+                i_out = [i_out/cm for i_out in dat['voltageclamp.Iout']]
+
+            axs[1+i].plot(times,
+                    i_out, label=f'Pred={alpha_p*100}',
+                    c=(alpha_p, 0, alpha_p))
+
+
+    for alpha_c in [0, .2, .4, .6, .8]:
+        for i, mod_proto in enumerate([['kernik_artifact.mmt', 'sodium_proto.mmt'],
+                            ['paci_artifact.mmt', 'sodium_proto_s.mmt']]):
+            mod = myokit.load_model(f'./mmt_files/{mod_proto[0]}')
+            proto = myokit.load_protocol(f'./mmt_files/{mod_proto[1]}')
+
+            mod['voltageclamp']['alpha_p'].set_rhs(.7)
+            mod['voltageclamp']['alpha_c'].set_rhs(alpha_c)
+
+            sim = myokit.Simulation(mod, proto)
+            t_max = proto.characteristic_time()
+            times = np.arange(0, t_max, t_step[i])
+
+            dat = sim.run(t_max, log_times=times)
+
+            if i > 0:
+                times = times * 1000
+                cm = 2.8E-11
+                i_out = [i_out/cm for i_out in dat['voltageclamp.Iout']]
+            else:
+                cm = 28
+                i_out = [i_out/cm for i_out in dat['voltageclamp.Iout']]
+
+            axs[1+i].plot(times,
+                    i_out, label=f'Pred={alpha_c*100}',
+                    c=(0, alpha_c, 0))
+
+    for ax in axs:
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+
+    fs = 14
+    axs[0].set_ylabel("Command Voltage", fontsize=fs)
+    axs[1].set_ylabel("Kernik Iout", fontsize=fs)
+    axs[2].set_ylabel("Paci Iout", fontsize=fs)
+    axs[2].set_xlabel("Time (ms)", fontsize=fs)
+
+    axs[1].set_ylim(-200, 10)
+    axs[2].set_ylim(-200, 10)
+
+    axs[2].legend()
+    plt.show()
+
+
 def main():
     #assess_prestep()
     #run_opt_proto()
     #run_sodium_proto()
     #compare_artifact_model()
-    adjust_compensation()
+    #adjust_compensation()
     #perf_vs_rupture()
+    compare_paci_kernik()
+
 
 
 if __name__ == '__main__':
