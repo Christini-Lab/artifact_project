@@ -1,0 +1,109 @@
+[[model]]
+author: Myokit CellML 1 API
+name: Ord 
+# Initial values
+Membrane.V               = -87
+INa.m                    = 0 
+INa.hf                    = 1
+INa.hs                    = 1
+INa.j                    = 1
+INa.hsp                    = 1
+INa.jp                    = 1
+
+[engine]
+time = 0 [ms]
+    in [ms]
+    bind time
+pace = 0
+    bind pace
+
+[stimulus]
+i_stim = engine.pace * amplitude
+    in [A/F]
+amplitude = -10 [A/F]
+    in [A/F]
+
+[Membrane]
+use model_parameters.Cm, voltageclamp.Vc, voltageclamp.rseries
+i_ion = INa.INa
+dot(V) = (Vc - V) / (Cm * rseries) - i_ion
+    in [mV]
+
+[voltageclamp]
+use Membrane.V
+rseries = 20.0 * 1E-3 # in order of Ohms; TODO: fit
+cm_est = model_parameters.Cm
+# Command voltage
+Vc = engine.pace
+    desc: command voltage
+    in [mV]
+Iout = (Vc - V) / rseries
+
+[INa]
+use reversal_potentials.ENa, Membrane.V
+mss=1.0/(1.0+exp((-(V+39.57))/9.871))
+tm=1.0/(6.765*exp((V+11.64)/34.77)+8.552*exp(-(V+77.42)/5.955))
+dot(m)=(mss-m)/tm
+
+hss=1.0/(1+exp((V+82.90)/6.086))
+thf=1.0/(1.432e-5*exp(-(V+1.196)/6.285)+6.149*exp((V+0.5096)/20.27))
+ths=1.0/(0.009794*exp(-(V+17.95)/28.05)+0.3343*exp((V+5.730)/56.66))
+Ahf=0.99
+Ahs=1.0-Ahf
+
+dot(hf)=(hss-hf)/thf
+dot(hs)=(hss-hs)/ths
+h=Ahf*hf+Ahs*hs
+jss=hss
+tj=2.038+1.0/(0.02136*exp(-(V+100.6)/8.281)+0.3052*exp((V+0.9941)/38.45))
+
+dot(j)=(jss-j)/tj
+hssp=1.0/(1+exp((V+89.1)/6.086))
+thsp=3.0*ths
+dot(hsp)=(hssp-hsp)/thsp
+hp=Ahf*hf+Ahs*hsp
+tjp=1.46*tj
+dot(jp)=(jss-jp)/tjp
+GNa=75
+INa=GNa*(V-ENa)*m^3.0*h*j
+
+
+[environment]
+celltype = 0
+    in [1]
+
+[extracellular]
+nao = 145 [mM]
+    in [mM]
+    oxmeta: extracellular_sodium_concentration
+
+[intracellular_ions]
+nai = 10
+
+[physical_constants]
+F = 96485 [C/mol]
+    in [C/mol]
+R = 8314 [mJ/mol/K]
+    in [mJ/mol/K]
+T = 310 [K]
+    in [K]
+zca = 2
+    in [1]
+zcl = -1
+    in [1]
+zk = 1
+    in [1]
+zna = 1
+    in [1]
+
+[reversal_potentials]
+ENa = physical_constants.R * physical_constants.T / (physical_constants.zna * physical_constants.F) * log(extracellular.nao / intracellular_ions.nai)
+    in [mV]
+
+
+[model_parameters]
+Cm = 60
+
+[[protocol]]
+#Level  Start    Length   Period   Multiplier
+4.0      10       1        1000      0

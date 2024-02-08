@@ -1,0 +1,179 @@
+[[model]]
+author: Myokit CellML 1 API
+name: paci_hyttinen_aaltosetala_severi_ventricularVersion
+# Initial values
+Membrane.Vm            = -7.43340057623840950e-2
+i_Na_m_gate.m          =  1.02953468725003994e-1
+i_Na_h_gate.h          =  7.86926637881461000e-1
+i_Na_j_gate.j          =  2.53943221774722006e-1
+voltageclamp.Vclamp = -.08 [V]
+voltageclamp.Vp = -.08 [V]
+voltageclamp.Vest = -.08 [V]
+voltageclamp.Iout = 0.0
+
+
+[Membrane]
+use voltageclamp.Vp, voltageclamp.rseries, voltageclamp.voffset_eff, model_parameters.Cm
+dot(Vm) = (Vp - Vm + voffset_eff) / tau - i_ion_star / Cm
+    tau = Cm * rseries in [s]
+    desc: membane potential
+    in [mV]
+
+i_ion_star = i_ion * Cm + voltageclamp.ILeak
+
+i_ion = (i_Na.i_Na)
+    in [V]
+
+[voltageclamp]
+use Membrane.Vm, model_parameters.Cm
+# Parameters
+rseries = 20.0 * 1E6 # in order of Ohms; TODO: fit
+cprs = 4.0 * 1E-12 [F]  # Unknown value for 'parasitic' capacitance at electrode...
+cprs_est = 4.0 * 1E-12 [F]  # eff. parasitic capacitance at electrode; TODO: fit
+voffset_eff = -.003 [V]
+rseries_est = 20.0 * 1E6 
+cm_est = 2.87109000000000034e-11 
+alpha_c = 0.7 [1]
+alpha_p = 0.7 [1]
+
+# Command voltage
+Vc = engine.pace
+    desc: command voltage
+    in [mV]
+
+# Rs compensation and summing delay
+tau_sum = 40e-6 in [s]  # electronic delay term, ~ 5 - 70 microsecond
+Vc_prime = (Vc + alpha_c*rseries_est*Iout + alpha_p*rseries_est*cm_est*dVestdt)
+dVclampdt = (Vc_prime - Vclamp) / tau_sum
+    in [mV/ms]
+dot(Vclamp) = dVclampdt
+    desc: clamp voltage
+    in [mV]
+
+# Supercharging
+dVestdt = piecewise(
+    cm_est < 1E-12, 0,
+    rseries_est < 1E6, 0,
+    (Vc - Vest) / ((1 - alpha_p) * cm_est * rseries_est)
+) in [mV/ms]
+dot(Vest) = dVestdt
+    in [V]
+
+# Amplifier delay
+tau_clamp = 0.8 * 1e-6 in [s]
+dVpdt = (Vclamp - Vp) / tau_clamp in [mV/ms]
+dot(Vp) = dVpdt
+    desc: pipette voltage
+    in [mV]
+
+# Feedback delay
+dot(Iout) = (Iin - Iout) / tau
+    tau = 7.5 * 1e-6 in [s]
+    desc: measured current
+    in [pA]
+
+Iin = (
+        (Vp - Vm + voffset_eff) / rseries
+        + cprs * dVpdt
+        - cprs_est * dVclampdt
+        - cm_est * if(rseries_est < 1E6, dVclampdt, dVestdt)
+    )
+    in [A]
+
+## assume linear leak residual
+gLeak = .23E-9 [A/V]
+ELeak = -.080 [V]
+ILeak = gLeak * (Vm - ELeak) in [pA]
+
+
+[engine]
+time = 0 [s]
+    in [s]
+    bind time
+pace = 0
+    bind pace
+
+[stimulus]
+i_stim = engine.pace * amplitude
+    in [A/F]
+amplitude = -10 [A/F]
+    in [A/F]
+
+[electric_potentials]
+E_Na = model_parameters.R * model_parameters.T / model_parameters.F * log(model_parameters.Nao / sodium_dynamics.Nai)
+    in [V]
+PkNa = 0.03
+    in [1]
+
+[i_Na]
+g_Na_scale = 1
+g_Na = 3671.2302 [S/F]
+    in [S/F]
+i_Na = g_Na_scale * (g_Na * (i_Na_m_gate.m ^ 3 * (i_Na_h_gate.h * (i_Na_j_gate.j * (Membrane.Vm - electric_potentials.E_Na)))))
+    in [A/F]
+
+[i_Na_h_gate]
+alpha_h = piecewise(Membrane.Vm < -0.04 [V], 0.057 * exp(-(Membrane.Vm * 1000 [1 (0.001)] + 80 [mV]) / 6.8 [mV]), 0)
+    in [1]
+beta_h = piecewise(Membrane.Vm < -0.04 [V], 2.7 * exp(0.079 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])) + 3.1 * (10 ^ 5 * exp(0.3485 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)]))), 0.77 / (0.13 * (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 10.66 [mV]) / -11.1 [mV]))))
+    in [1]
+dot(h) = (h_inf - h) / tau_h
+    in [1]
+h_inf = 1 / sqrt(1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 72.1 [mV]) / 5.7 [mV]))
+    in [1]
+tau_h = piecewise(Membrane.Vm < -0.04 [V], 1.5 [s] / ((alpha_h + beta_h) * 1000), 2.542 [s] / 1000)
+    in [s]
+
+[i_Na_j_gate]
+alpha_j = piecewise(Membrane.Vm < -0.04 [V], (-25428 [1/mV] * exp(0.2444 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])) - 6.948 [1/mV] * (10 ^ (-6) * exp(-0.04391 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])))) * (Membrane.Vm * 1000 [1 (0.001)] + 37.78 [mV]) / (1 + exp(0.311 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 79.23 [mV]))), 0)
+    in [1]
+beta_j = piecewise(Membrane.Vm < -0.04 [V], 0.02424 * exp(-0.01052 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])) / (1 + exp(-0.1378 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 40.14 [mV]))), 0.6 * exp(0.057 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)])) / (1 + exp(-0.1 [1/mV] * (Membrane.Vm * 1000 [1 (0.001)] + 32 [mV]))))
+    in [1]
+dot(j) = (j_inf - j) / tau_j
+    in [1]
+j_inf = 1 / sqrt(1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 72.1 [mV]) / 5.7 [mV]))
+    in [1]
+tau_j = 7 [s] / ((alpha_j + beta_j) * 1000)
+    in [s]
+
+[i_Na_m_gate]
+alpha_m = 1 / (1 + exp((-Membrane.Vm * 1000 [1 (0.001)] - 60 [mV]) / 5 [mV]))
+    in [1]
+beta_m = 0.1 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] + 35 [mV]) / 5 [mV])) + 0.1 / (1 + exp((Membrane.Vm * 1000 [1 (0.001)] - 50 [mV]) / 200 [mV]))
+    in [1]
+dot(m) = (m_inf - m) / tau_m
+    in [1]
+m_inf = 1 / (1 + exp((-Membrane.Vm * 1000 [1 (0.001)] - 34.1 [mV]) / 5.9 [mV])) ^ (1 / 3)
+    in [1]
+tau_m = 1 [s] * (alpha_m * beta_m) / 1000
+    in [s]
+
+[model_parameters]
+Cao = 1.8 [mM]
+    in [mM]
+Cm =  2.87109000000000034e-11 [F]
+    in [F]
+F =  9.64853414999999950e4 [C/mol]
+    in [C/mol]
+Ki = 150 [mM]
+    in [mM]
+Ko = 5.4 [mM]
+    in [mM]
+Nao = 151 [mM]
+    in [mM]
+R = 8.314472 [J/mol/K]
+    in [J/mol/K]
+T = 310 [K]
+    in [K]
+V_SR = 583.73 [um^3]
+    in [um^3]
+Vc = 8800 [um^3]
+    in [um^3]
+
+[sodium_dynamics]
+Nai = 1.09248496211573993e1
+    in [mM]
+
+[[protocol]]
+#Level  Start    Length   Period   Multiplier
+4.0      .010       1        1         0

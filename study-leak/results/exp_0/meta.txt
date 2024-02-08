@@ -1,0 +1,10 @@
+Population size: 100
+Max generations: 10
+Window size: 10
+Steps only: False
+Number of segments: 4
+Mate probability: 0.2
+Mutate probability: 0.2
+Tournament size: 2
+Duration: (10, 1000)
+Voltage: (-120, 60)

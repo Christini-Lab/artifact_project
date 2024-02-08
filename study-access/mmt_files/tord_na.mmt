@@ -1,0 +1,102 @@
+[[model]]
+author: Myokit CellML 1 API
+name: Tomek_model13endo
+# Initial values
+membrane.v               = -88.7638
+INa.m                    =  8.05720000000000004e-4
+INa.h                    = 0.8286
+INa.j                    = 0.8284
+
+[engine]
+time = 0 [ms]
+    in [ms]
+    bind time
+pace = 0
+    bind pace
+
+[stimulus]
+i_stim = engine.pace * amplitude
+    in [A/F]
+amplitude = -10 [A/F]
+    in [A/F]
+
+[INa]
+GNa = 11.7802 [mS/uF]
+    in [mS/uF]
+    oxmeta: membrane_fast_sodium_current_conductance
+INa = GNa * (membrane.v - reversal_potentials.ENa) * m ^ 3 * h * j
+    in [A/F]
+    oxmeta: membrane_fast_sodium_current
+ah = piecewise(membrane.v >= -40 [mV], 0, 0.057 * exp(-(membrane.v + 80 [mV]) / 6.8 [mV]))
+    in [1]
+aj = piecewise(membrane.v >= -40 [mV], 0, (-25428 [1/mV] * exp(0.2444 [1/mV] * membrane.v) - 6.948e-6 [1/mV] * exp(-0.04391 [1/mV] * membrane.v)) * (membrane.v + 37.78 [mV]) / (1 + exp(0.311 [1/mV] * (membrane.v + 79.23 [mV]))))
+    in [1]
+bh = piecewise(membrane.v >= -40 [mV], 0.77 / (0.13 * (1 + exp(-(membrane.v + 10.66 [mV]) / 11.1 [mV]))), 2.7 * exp(0.079 [1/mV] * membrane.v) + 310000 * exp(0.3485 [1/mV] * membrane.v))
+    in [1]
+bj = piecewise(membrane.v >= -40 [mV], 0.6 * exp(0.057 [1/mV] * membrane.v) / (1 + exp(-0.1 [1/mV] * (membrane.v + 32 [mV]))), 0.02424 * exp(-0.01052 [1/mV] * membrane.v) / (1 + exp(-0.1378 [1/mV] * (membrane.v + 40.14 [mV]))))
+    in [1]
+dot(h) = (hss - h) / th
+    in [1]
+hss = 1 / (1 + exp((membrane.v + 71.55 [mV]) / 7.43 [mV])) ^ 2
+    in [1]
+hssp = 1 / (1 + exp((membrane.v + 77.55 [mV]) / 7.43 [mV])) ^ 2
+    in [1]
+dot(j) = (jss - j) / tj
+    in [1]
+jss = hss
+    in [1]
+dot(m) = (mss - m) / tm
+    in [1]
+mss = 1 / (1 + exp(-(membrane.v + 56.86 [mV]) / 9.03 [mV])) ^ 2
+    in [1]
+th = 1 [ms] / (ah + bh)
+    in [ms]
+tj = 1 [ms] / (aj + bj)
+    in [ms]
+tjp = 1.46 * tj
+    in [ms]
+tm = 0.1292 [ms] * exp(-((membrane.v + 45.79 [mV]) / 15.54 [mV]) ^ 2) + 0.06487 [ms] * exp(-((membrane.v - 4.823 [mV]) / 51.12 [mV]) ^ 2)
+    in [ms]
+
+
+[environment]
+celltype = 0
+    in [1]
+
+[extracellular]
+nao = 140 [mM]
+    in [mM]
+    oxmeta: extracellular_sodium_concentration
+
+[intracellular_ions]
+nai = 12.1025
+
+[membrane]
+i_ion = INa.INa
+dot(v) = -(i_ion + stimulus.i_stim)
+    in [mV]
+    oxmeta: membrane_voltage
+
+[physical_constants]
+F = 96485 [C/mol]
+    in [C/mol]
+R = 8314 [mJ/mol/K]
+    in [mJ/mol/K]
+T = 310 [K]
+    in [K]
+zca = 2
+    in [1]
+zcl = -1
+    in [1]
+zk = 1
+    in [1]
+zna = 1
+    in [1]
+
+[reversal_potentials]
+ENa = physical_constants.R * physical_constants.T / (physical_constants.zna * physical_constants.F) * log(extracellular.nao / intracellular_ions.nai)
+    in [mV]
+
+[[protocol]]
+#Level  Start    Length   Period   Multiplier
+4.0      10       1        1000      0

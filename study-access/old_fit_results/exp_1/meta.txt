@@ -1,0 +1,5 @@
+Population size: 200
+Max generations: 7
+Mate probability: 0.2
+Mutate probability: 0.2
+Tournament size: 2

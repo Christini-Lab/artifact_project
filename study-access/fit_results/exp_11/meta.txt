@@ -1,0 +1,19 @@
+Experimental file: 4_021821_2_alex_control
+Model name: Ord
+Cell estimated Cm: 21.7
+Cell estimated Rseries: 44.2
+Population size: 300
+Max generations: 20
+Mate probability: 0.2
+Mutate probability: 0.2
+Tournament size: 2
+Adjusted params:
+	rseries
+	cm
+	gLeak
+	ELeak
+	g_Na
+Fitted compensation settings:
+	rscomp_80
+	rspre_80
+	rspre_0

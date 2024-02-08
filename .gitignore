@@ -2,3 +2,6 @@ data
 __pycache__
 *.swp
 *.DS_Store
+nav-experiments/data
+*/data
+*/figures

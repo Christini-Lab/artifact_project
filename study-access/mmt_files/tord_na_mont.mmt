@@ -1,0 +1,117 @@
+[[model]]
+author: Myokit CellML 1 API
+name: Tomek_model13endo
+# Initial values
+Membrane.Vm               = -88.7638
+INa.m                    =  8.05720000000000004e-4
+INa.h                    = 0.8286
+INa.j                    = 0.8284
+
+[engine]
+time = 0 [ms]
+    in [ms]
+    bind time
+pace = 0
+    bind pace
+
+[stimulus]
+i_stim = engine.pace * amplitude
+    in [A/F]
+amplitude = -10 [A/F]
+    in [A/F]
+
+[Membrane]
+use model_parameters.Cm, voltageclamp.Vc, voltageclamp.rseries
+i_ion = INa.INa
+dot(Vm) = (Vc - Vm) / (Cm * rseries) - i_ion
+    in [mV]
+
+[voltageclamp]
+use Membrane.Vm
+rseries = 20.0 * 1E-3 # in order of Ohms; TODO: fit
+cm_est = model_parameters.Cm
+# Command voltage
+Vc = engine.pace
+    desc: command voltage
+    in [mV]
+Iout = Membrane.i_ion * cm_est
+
+
+[INa]
+GNa = 11.7802 [mS/uF]
+    in [mS/uF]
+    oxmeta: membrane_fast_sodium_current_conductance
+INa = GNa * (Membrane.Vm - reversal_potentials.ENa) * m ^ 3 * h * j
+    in [A/F]
+    oxmeta: membrane_fast_sodium_current
+ah = piecewise(Membrane.Vm >= -40 [mV], 0, 0.057 * exp(-(Membrane.Vm + 80 [mV]) / 6.8 [mV]))
+    in [1]
+aj = piecewise(Membrane.Vm >= -40 [mV], 0, (-25428 [1/mV] * exp(0.2444 [1/mV] * Membrane.Vm) - 6.948e-6 [1/mV] * exp(-0.04391 [1/mV] * Membrane.Vm)) * (Membrane.Vm + 37.78 [mV]) / (1 + exp(0.311 [1/mV] * (Membrane.Vm + 79.23 [mV]))))
+    in [1]
+bh = piecewise(Membrane.Vm >= -40 [mV], 0.77 / (0.13 * (1 + exp(-(Membrane.Vm + 10.66 [mV]) / 11.1 [mV]))), 2.7 * exp(0.079 [1/mV] * Membrane.Vm) + 310000 * exp(0.3485 [1/mV] * Membrane.Vm))
+    in [1]
+bj = piecewise(Membrane.Vm >= -40 [mV], 0.6 * exp(0.057 [1/mV] * Membrane.Vm) / (1 + exp(-0.1 [1/mV] * (Membrane.Vm + 32 [mV]))), 0.02424 * exp(-0.01052 [1/mV] * Membrane.Vm) / (1 + exp(-0.1378 [1/mV] * (Membrane.Vm + 40.14 [mV]))))
+    in [1]
+dot(h) = (hss - h) / th
+    in [1]
+hss = 1 / (1 + exp((Membrane.Vm + 71.55 [mV]) / 7.43 [mV])) ^ 2
+    in [1]
+hssp = 1 / (1 + exp((Membrane.Vm + 77.55 [mV]) / 7.43 [mV])) ^ 2
+    in [1]
+dot(j) = (jss - j) / tj
+    in [1]
+jss = hss
+    in [1]
+dot(m) = (mss - m) / tm
+    in [1]
+mss = 1 / (1 + exp(-(Membrane.Vm + 56.86 [mV]) / 9.03 [mV])) ^ 2
+    in [1]
+th = 1 [ms] / (ah + bh)
+    in [ms]
+tj = 1 [ms] / (aj + bj)
+    in [ms]
+tjp = 1.46 * tj
+    in [ms]
+tm = 0.1292 [ms] * exp(-((Membrane.Vm + 45.79 [mV]) / 15.54 [mV]) ^ 2) + 0.06487 [ms] * exp(-((Membrane.Vm - 4.823 [mV]) / 51.12 [mV]) ^ 2)
+    in [ms]
+
+
+[environment]
+celltype = 0
+    in [1]
+
+[extracellular]
+nao = 140 [mM]
+    in [mM]
+    oxmeta: extracellular_sodium_concentration
+
+[intracellular_ions]
+nai = 12.1025
+
+
+[physical_constants]
+F = 96485 [C/mol]
+    in [C/mol]
+R = 8314 [mJ/mol/K]
+    in [mJ/mol/K]
+T = 310 [K]
+    in [K]
+zca = 2
+    in [1]
+zcl = -1
+    in [1]
+zk = 1
+    in [1]
+zna = 1
+    in [1]
+
+[reversal_potentials]
+ENa = physical_constants.R * physical_constants.T / (physical_constants.zna * physical_constants.F) * log(extracellular.nao / intracellular_ions.nai)
+    in [mV]
+
+[model_parameters]
+Cm = 60
+
+[[protocol]]
+#Level  Start    Length   Period   Multiplier
+4.0      10       1        1000      0

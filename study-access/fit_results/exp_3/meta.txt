@@ -1,0 +1,17 @@
+Experimental file: 4_021921_2_alex_control
+Model name: Paci
+Cell estimated Cm: 51.0
+Cell estimated Rseries: 39.3
+Population size: 100
+Max generations: 10
+Mate probability: 0.2
+Mutate probability: 0.2
+Tournament size: 2
+Adjusted params:
+	rseries
+	cm
+	gLeak
+	ELeak
+	g_Na
+Fitted compensation settings:
+	rscomp_80
