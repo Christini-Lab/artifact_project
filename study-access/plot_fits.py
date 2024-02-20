@@ -385,6 +385,6 @@ def compare_target_iv_curves(folder):
 
 
 
-#plot_best_vs_exp(folder='fit_results/exp_11')
+plot_best_vs_exp(folder='fit_results/exp_11')
 
-compare_target_iv_curves(folder='fit_results/exp_11')
+#compare_target_iv_curves(folder='fit_results/exp_11')

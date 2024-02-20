@@ -7,6 +7,7 @@ from import_rtxi import get_exp_as_df
 from scipy.signal import find_peaks
 
 
+
 #UTILITY FUNCTIONS
 def get_exp_sodium_proto(scale=1000):
     proto = myokit.Protocol()
@@ -198,9 +199,6 @@ def get_exp_comp_data(f_name='4_021921_2_alex_control'):
 
     time = temp_dat['Time (s)'].values
     voltages = temp_dat['Voltage (V)'].values
-
-    import pdb
-    pdb.set_trace()
 
     return exp_dat, time, voltages, cm, ra, rm
 
@@ -651,7 +649,7 @@ def compare_all_comp_settings(exp_f='4_021921_2_alex_control'):
 def plot_multiple_current_traces(f, comp_setting='rscomp_80'):
     # -60, -50, -40, -30, -20, 0, 20, 40, 60
     # For exp and each model:
-        # Get the current data from -2 ms to +10 ms after the step to the above voltages
+    # Get the current data from -2 ms to +10 ms after the step to the above voltages
         #
 
     kernik_dat, exp_dat = get_modexp_curr_voltage_dat(f, 'Kernik', comp_setting)
@@ -759,6 +757,33 @@ def plot_vest_vcmd():
     plt.show()
     
 
+def plot_exp_comp_data(f_name):
+    exp_dat, time, voltages, cm, ra, rm = get_exp_comp_data(f_name)
+
+    fig, axs = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+    axs[0].plot(1000*time, 1000*voltages, 'k')
+    col_scale = [.2, .4, .6, .8, 1]
+
+    cols_1 = [[0, v, 0] for v in col_scale]
+    cols_2 = [[v, 0, v] for v in col_scale]
+
+    colors = cols_2 + cols_1 
+
+    i = 0
+    for k, arr in exp_dat.items():
+        axs[1].plot(time*1000, arr, c=colors[i], label=k)
+        i+=1 
+
+    axs[0].set_xlim(2649, 2655)
+    axs[1].set_ylim(-120, 10)
+
+
+    plt.show()
+
+
+    import pdb
+    pdb.set_trace()
+
 
 def main():
     #files with sodium:
@@ -780,7 +805,11 @@ def main():
     #compare_all_comp_settings('4_021821_2_alex_control')
     #compare_all_comp_settings('4_021821_2_alex_control')
     #plot_multiple_current_traces('4_021921_2_alex_control', 'rspre_0')
-    get_exp_comp_data('4_021821_2_alex_control')
+
+    #GOOD
+    plot_exp_comp_data('4_021821_4_alex_control')
+    #
+    #plot_exp_comp_data('4_021821_1_alex_control')
 
 
 
